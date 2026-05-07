@@ -9,6 +9,10 @@ import {
   getZTMTotalMinutes,
   getCollab,
   getZTM,
+  getDailyTasks,
+  saveDailyTasks,
+  getBookPage,
+  saveBookPage,
   ZTM_TARGET_MINUTES,
 } from '../lib/storage';
 
@@ -18,26 +22,80 @@ function fmtHours(mins: number) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+const iconBtn: React.CSSProperties = {
+  width: 22,
+  height: 22,
+  borderRadius: 4,
+  border: '1px solid #374151',
+  background: '#0d1321',
+  color: '#9ca3af',
+  fontSize: 15,
+  lineHeight: 1,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 0,
+  flexShrink: 0,
+};
+
 export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [weeklyMins, setWeeklyMins] = useState(0);
   const [totalMins, setTotalMins] = useState(0);
   const [collabCount, setCollabCount] = useState(0);
   const [ztmSessionCount, setZtmSessionCount] = useState(0);
-
-  useEffect(() => {
-    setMounted(true);
-    setWeeklyMins(getZTMWeeklyMinutes());
-    setTotalMins(getZTMTotalMinutes());
-    setCollabCount(getCollab().length);
-    setZtmSessionCount(getZTM().length);
-  }, []);
+  const [tasksDone, setTasksDone] = useState<boolean[]>([]);
+  const [bookPage, setBookPage] = useState(CURRENT_BOOK.currentPage);
+  const [pageStr, setPageStr] = useState(String(CURRENT_BOOK.currentPage));
 
   const weekInfo = getCurrentWeekInfo();
   const today = new Date().getDay();
   const todayTasks = DAILY_TASKS[today] || [];
   const ztmPct = Math.min(100, Math.round((totalMins / ZTM_TARGET_MINUTES) * 100));
-  const bookPct = Math.round((CURRENT_BOOK.currentPage / CURRENT_BOOK.totalPages) * 100);
+  const bookPct = Math.round((bookPage / CURRENT_BOOK.totalPages) * 100);
+
+  useEffect(() => {
+    (async () => {
+      const [collab, sessions, done, page] = await Promise.all([
+        getCollab(),
+        getZTM(),
+        getDailyTasks(todayTasks.length),
+        getBookPage(CURRENT_BOOK.currentPage),
+      ]);
+      setCollabCount(collab.length);
+      setZtmSessionCount(sessions.length);
+      setWeeklyMins(getZTMWeeklyMinutes(sessions));
+      setTotalMins(getZTMTotalMinutes(sessions));
+      setTasksDone(done);
+      setBookPage(page);
+      setPageStr(String(page));
+      setMounted(true);
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleTask = async (i: number) => {
+    const next = [...tasksDone];
+    next[i] = !next[i];
+    setTasksDone(next);
+    await saveDailyTasks(next);
+  };
+
+  const adjustPage = async (delta: number) => {
+    const next = Math.max(1, Math.min(CURRENT_BOOK.totalPages, bookPage + delta));
+    setBookPage(next);
+    setPageStr(String(next));
+    await saveBookPage(next);
+  };
+
+  const commitPageStr = async () => {
+    const n = parseInt(pageStr, 10);
+    if (isNaN(n)) { setPageStr(String(bookPage)); return; }
+    const next = Math.max(1, Math.min(CURRENT_BOOK.totalPages, n));
+    setBookPage(next);
+    setPageStr(String(next));
+    await saveBookPage(next);
+  };
 
   return (
     <div className="space-y-6">
@@ -70,12 +128,46 @@ export default function Home() {
             TODAY'S TASKS
           </div>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {todayTasks.map((task, i) => (
-              <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: '#d1d5db' }}>
-                <span style={{ color: weekInfo.color, marginTop: 1, flexShrink: 0 }}>▸</span>
-                {task}
-              </li>
-            ))}
+            {todayTasks.map((task, i) => {
+              const done = mounted && tasksDone[i];
+              return (
+                <li
+                  key={i}
+                  onClick={() => toggleTask(i)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    fontSize: 13,
+                    color: done ? '#4b5563' : '#d1d5db',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                  }}
+                >
+                  <div style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: 3,
+                    border: `1.5px solid ${done ? weekInfo.color : '#374151'}`,
+                    background: done ? weekInfo.color : 'transparent',
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginTop: 2,
+                    transition: 'all 0.15s',
+                  }}>
+                    {done && <span style={{ color: '#0a0e1a', fontSize: 9, fontWeight: 700 }}>✓</span>}
+                  </div>
+                  <span style={{
+                    textDecoration: done ? 'line-through' : 'none',
+                    textDecorationColor: '#4b5563',
+                  }}>
+                    {task}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </Card>
 
@@ -124,14 +216,41 @@ export default function Home() {
           <div style={{ background: '#1f2937', borderRadius: 4, height: 6, overflow: 'hidden' }}>
             <div style={{
               height: '100%',
-              width: `${bookPct}%`,
+              width: `${mounted ? bookPct : Math.round(CURRENT_BOOK.currentPage / CURRENT_BOOK.totalPages * 100)}%`,
               background: 'linear-gradient(90deg, #e91e8c, #f472b6)',
               borderRadius: 4,
+              transition: 'width 0.3s ease',
             }} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-            <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#6b7280' }}>p.{CURRENT_BOOK.currentPage}</span>
-            <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#6b7280' }}>p.{CURRENT_BOOK.totalPages} ({bookPct}%)</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button style={iconBtn} onClick={() => adjustPage(-1)}>−</button>
+              <input
+                type="number"
+                value={pageStr}
+                onChange={e => setPageStr(e.target.value)}
+                onBlur={commitPageStr}
+                onKeyDown={e => { if (e.key === 'Enter') commitPageStr(); }}
+                min={1}
+                max={CURRENT_BOOK.totalPages}
+                style={{
+                  width: 52,
+                  background: '#0d1321',
+                  border: '1px solid #374151',
+                  borderRadius: 4,
+                  color: '#6b7280',
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  textAlign: 'center',
+                  padding: '2px 4px',
+                  outline: 'none',
+                }}
+              />
+              <button style={iconBtn} onClick={() => adjustPage(1)}>+</button>
+            </div>
+            <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#6b7280' }}>
+              of {CURRENT_BOOK.totalPages} ({mounted ? bookPct : Math.round(CURRENT_BOOK.currentPage / CURRENT_BOOK.totalPages * 100)}%)
+            </span>
           </div>
         </Card>
       </div>

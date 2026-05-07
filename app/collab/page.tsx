@@ -36,15 +36,19 @@ export default function CollabPage() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setEntries(getCollab().reverse());
-    setMounted(true);
+    (async () => {
+      const all = await getCollab();
+      setEntries([...all].reverse());
+      setMounted(true);
+    })();
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const entry: CollabEntry = { ...form, id: genId(), timestamp: Date.now() };
-    addCollab(entry);
-    setEntries(getCollab().reverse());
+    await addCollab(entry);
+    const all = await getCollab();
+    setEntries([...all].reverse());
     setForm(newEntry());
     setSubmitted(true);
     setTimeout(() => setSubmitted(false), 2500);

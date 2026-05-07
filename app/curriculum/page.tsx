@@ -15,12 +15,15 @@ export default function CurriculumPage() {
   const [activePhase, setActivePhase] = useState<1 | 2 | 3 | 'all'>('all');
 
   useEffect(() => {
-    setCompleted(getCurriculumCompleted());
-    setMounted(true);
+    (async () => {
+      const done = await getCurriculumCompleted();
+      setCompleted(done);
+      setMounted(true);
+    })();
   }, []);
 
-  const handleToggle = useCallback((taskId: string) => {
-    const next = toggleCurriculumTask(taskId);
+  const handleToggle = useCallback(async (taskId: string) => {
+    const next = await toggleCurriculumTask(taskId);
     setCompleted({ ...next });
   }, []);
 

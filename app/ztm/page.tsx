@@ -21,8 +21,11 @@ export default function ZTMPage() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setSessions(getZTM().reverse());
-    setMounted(true);
+    (async () => {
+      const all = await getZTM();
+      setSessions([...all].reverse());
+      setMounted(true);
+    })();
   }, []);
 
   const weeklyMins = (() => {
@@ -38,13 +41,14 @@ export default function ZTMPage() {
   const pct = Math.min(100, Math.round((totalMins / ZTM_TARGET_MINUTES) * 100));
   const remaining = Math.max(0, ZTM_TARGET_MINUTES - totalMins);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const m = parseInt(minutes, 10);
     if (!section.trim() || isNaN(m) || m <= 0) return;
     const session: ZTMSession = { id: genId(), timestamp: Date.now(), section: section.trim(), minutes: m };
-    addZTM(session);
-    setSessions(getZTM().reverse());
+    await addZTM(session);
+    const all = await getZTM();
+    setSessions([...all].reverse());
     setSection('');
     setMinutes('');
     setSubmitted(true);
